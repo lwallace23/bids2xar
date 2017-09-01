@@ -2,6 +2,8 @@ import os
 import fnmatch
 import ntpath
 import sys
+import tempfile
+import zipfile
 from os.path import basename
 from lxml import etree
 
@@ -53,6 +55,12 @@ for subjectdir in subjectdirs:
     # use subject and 'MR' for session label by default
     sessionl = subjectl + "_MR"
 
+    # create XAR zip file
+    xarfilename = sessionl + ".xar"
+    xarfilelocation = outputdir + xarfilename
+
+    xarfile = zipfile.ZipFile(xarfilelocation, mode='w')
+
     # build MR session XML, set session-level metadata
     session = etree.Element(xnatprefix + 'MRSession')
     tree = etree.ElementTree(session)
@@ -82,6 +90,8 @@ for subjectdir in subjectdirs:
         # generate scan metadata from filename for each NIFTI file
         for niftifile in niftifiles:
             imageindex += 1
+
+            xarfile.write(niftifile, 'RAW/' + niftifile)
 
             # count files, XNAT scan ID is image type folder plus file index
             id = datadir + str(imageindex)
@@ -120,9 +130,17 @@ for subjectdir in subjectdirs:
 
     # write XML to temp file
     try:
-        filename = outputdir + 'assessment' + subjectl + '.xml'
-        print filename
-        tree.write(open(filename, 'wb'))
+        xmlfilename = outputdir + 'session' + subjectl + '.xml'
+        xmlfile = open(xmlfilename, 'wb')
+
+        tree.write(xmlfile)
+
+        xmlfile.close()
+
+        xarfile.write(xmlfilename, 'session.xml')
+        xarfile.close()
+
+        os.remove(xmlfilename)
     except IOError as e:
         print 'IO Error'
 
