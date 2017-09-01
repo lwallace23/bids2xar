@@ -5,8 +5,26 @@ import sys
 from os.path import basename
 from lxml import etree
 
+# register XNAT namespace for XML generation
+xnatns = "http://nrg.wustl.edu/xnat"
+xsins = "http://nrg.wustl.edu/xsi"
+
+etree.register_namespace("xnat", xnatns)
+etree.register_namespace("xsi", xsins)
+
+xnatprefix = "{" + xnatns + "}"
+xsiprefix = "{" + xsins + "}"
+
+# output directory should be last argument
+outputdir = sys.argv[-1]
+
+outputdir = os.path.abspath(outputdir)
+
+if not outputdir.endswith('/') or not outputdir.endswith('\\'):
+    outputdir = outputdir + '/'
+
 # input dir should be root directory of bids dataset
-inputdir = sys.argv[-1]
+inputdir = sys.argv[-2]
 
 # get root directory name for project name by default
 splitdir = os.path.split(os.path.dirname(inputdir))
@@ -16,12 +34,6 @@ if splitdir[0] == '':
     project = ntpath.split(inputdir)[1]
 else:
     project = splitdir[1]
-
-# register XNAT namespace for XML generation
-xnatns = "http://nrg.wustl.edu/xnat"
-etree.register_namespace("xnat", xnatns)
-
-xnatprefix = "{" + xnatns + "}"
 
 # move into root directory
 os.chdir(inputdir)
@@ -41,11 +53,11 @@ for subjectdir in subjectdirs:
     # use subject and 'MR' for session label by default
     sessionl = subjectl + "_MR"
 
-    #print os.getcwd()
-
     # build MR session XML, set session-level metadata
-    session = etree.Element(xnatprefix + 'mrSessionData')
-    
+    session = etree.Element(xnatprefix + 'MRSession')
+    tree = etree.ElementTree(session)
+
+    session.set('ID', '')
     session.set('label', sessionl)
     session.set('project', project)
     subject = etree.SubElement(session, xnatprefix + 'subject_ID')
@@ -69,8 +81,9 @@ for subjectdir in subjectdirs:
 
         # generate scan metadata from filename for each NIFTI file
         for niftifile in niftifiles:
-            # count files, XNAT scan ID is image type folder plus file index
             imageindex += 1
+
+            # count files, XNAT scan ID is image type folder plus file index
             id = datadir + str(imageindex)
 
             # tokenize BIDS filename
@@ -83,18 +96,35 @@ for subjectdir in subjectdirs:
             seriesdesc = "_".join(metadata[1:])
 
             # generate scan XML metadata
-            #print id + "   " + type + "   " + seriesdesc
-            scan = etree.SubElement(scans, xnatprefix + 'scan')
+            # print id + "   " + type + "   " + seriesdesc
+            scan = etree.Element(xnatprefix + 'scan')
             scan.set('ID', id)
             scan.set('type', type)
+            scan.set(xsiprefix + 'type', 'xnat:mrScanData')
 
             seriesdescel = etree.SubElement(scan, xnatprefix + 'series_description')
             seriesdescel.text = seriesdesc
+
+            fileel = etree.SubElement(scan, xnatprefix + 'file')
+            fileel.set('content', 'NIFTI_RAW')
+            fileel.set('format', 'NIFTI_RAW')
+            fileel.set('URI', niftifile)
+            fileel.set(xsiprefix + 'type', 'xnat:imageResource')
+
+            scans.append(scan)
 
         os.chdir("..")
 
     # print out XML for debugging
     print etree.tostring(session, pretty_print=True)
+
+    # write XML to temp file
+    try:
+        filename = outputdir + 'assessment' + subjectl + '.xml'
+        print filename
+        tree.write(open(filename, 'wb'))
+    except IOError as e:
+        print 'IO Error'
 
     # back up to go to next subject
     os.chdir("..")
